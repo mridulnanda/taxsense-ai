@@ -1,0 +1,288 @@
+# dbt Project Configuration
+# Data transformation and analytics engineering models
+
+name: 'financial_warehouse'
+version: '1.0.0'
+config-version: 2
+
+profile: 'financial_warehouse'
+
+model-paths: ["models"]
+analysis-paths: ["analysis"]
+test-paths: ["tests"]
+data-paths: ["data"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+models:
+  financial_warehouse:
+    materialized: table
+
+    staging:
+      +materialized: view
+      +description: "Staging layer - minimal transformation from raw data"
+
+      stg_transactions:
+        +description: "Staged transactions with basic validation"
+        columns:
+          - name: transaction_id
+            description: "Unique transaction identifier"
+            tests:
+              - unique
+              - not_null
+          - name: customer_id
+            description: "Customer identifier"
+            tests:
+              - not_null
+          - name: amount_usd
+            description: "Transaction amount in USD"
+            tests:
+              - not_null
+
+      stg_customers:
+        +description: "Staged customer records with deduplication"
+        columns:
+          - name: customer_id
+            description: "Unique customer identifier"
+            tests:
+              - unique
+              - not_null
+
+      stg_subscriptions:
+        +description: "Staged subscription events"
+        columns:
+          - name: subscription_id
+            description: "Unique subscription identifier"
+            tests:
+              - unique
+              - not_null
+
+      stg_user_events:
+        +description: "Staged user engagement events"
+        columns:
+          - name: event_id
+            description: "Unique event identifier"
+            tests:
+              - unique
+              - not_null
+
+    marts:
+      +materialized: table
+      +schema: analytics
+      +description: "Analytics marts for business intelligence"
+
+      finance:
+        +description: "Financial reporting models"
+
+        fct_transactions:
+          +description: "Central transaction fact table"
+          +tags: ["finance", "critical"]
+          columns:
+            - name: transaction_sk
+              description: "Surrogate key"
+              tests:
+                - unique
+                - not_null
+            - name: transaction_id
+              description: "Business key - source transaction ID"
+            - name: amount_usd
+              description: "Transaction amount normalized to USD"
+              tests:
+                - not_null
+                - dbt_expectations.expect_column_values_to_be_in_type_list:
+                    column_type_list: ["NUMERIC", "DECIMAL64"]
+
+        fct_revenue:
+          +description: "Revenue recognition facts per IFRS 15"
+          +tags: ["finance", "accounting", "critical"]
+          columns:
+            - name: revenue_id
+              description: "Unique revenue record ID"
+              tests:
+                - unique
+                - not_null
+            - name: revenue_amount
+              description: "Recognized revenue in reporting currency"
+            - name: recognition_status
+              description: "Revenue recognition lifecycle status"
+              tests:
+                - accepted_values:
+                    values: ['unrecognized', 'partial', 'recognized']
+
+        fct_payment_flow:
+          +description: "Payment processing metrics"
+          +tags: ["finance"]
+          columns:
+            - name: payment_id
+              description: "Unique payment identifier"
+              tests:
+                - unique
+                - not_null
+
+        dim_customer:
+          +description: "Customer dimension with SCD Type 2"
+          +tags: ["customer"]
+          columns:
+            - name: customer_sk
+              description: "Surrogate key"
+              tests:
+                - unique
+                - not_null
+            - name: customer_id
+              description: "Business key"
+            - name: is_current
+              description: "Flag indicating current record"
+              tests:
+                - accepted_values:
+                    values: [true, false]
+
+        dim_product:
+          +description: "Product dimension"
+          +tags: ["product"]
+          columns:
+            - name: product_sk
+              description: "Surrogate key"
+              tests:
+                - unique
+                - not_null
+
+        dim_date:
+          +description: "Time dimension"
+          +tags: ["date"]
+          columns:
+            - name: date_sk
+              description: "Date surrogate key (YYYYMMDD)"
+              tests:
+                - unique
+                - not_null
+
+      product:
+        +description: "Product analytics models"
+
+        fct_user_events:
+          +description: "User engagement events fact table"
+          +tags: ["product", "engagement"]
+          columns:
+            - name: event_sk
+              description: "Surrogate key"
+              tests:
+                - unique
+                - not_null
+            - name: user_id
+              description: "User identifier"
+
+        fct_feature_adoption:
+          +description: "Feature adoption metrics"
+          +tags: ["product"]
+          columns:
+            - name: feature_adoption_id
+              description: "Unique adoption record"
+              tests:
+                - unique
+                - not_null
+
+        fct_engagement_metrics:
+          +description: "User engagement KPIs"
+          +tags: ["product"]
+          columns:
+            - name: engagement_metric_id
+              description: "Unique engagement metric ID"
+              tests:
+                - unique
+                - not_null
+
+        fct_cohort_analysis:
+          +description: "Cohort-based user analysis"
+          +tags: ["product", "analytics"]
+          columns:
+            - name: cohort_id
+              description: "User cohort identifier"
+
+      compliance:
+        +description: "Compliance and audit models"
+
+        fct_audit_trail:
+          +description: "Complete audit trail for compliance"
+          +tags: ["compliance", "critical", "gdpr"]
+          columns:
+            - name: audit_id
+              description: "Unique audit record ID"
+              tests:
+                - unique
+                - not_null
+            - name: event_type
+              description: "Type of audit event"
+              tests:
+                - accepted_values:
+                    values: ['data_access', 'data_export', 'data_deletion', 'config_change', 'auth_failure']
+
+        fct_data_lineage:
+          +description: "Data lineage for impact analysis"
+          +tags: ["compliance", "governance"]
+          columns:
+            - name: lineage_id
+              description: "Unique lineage record"
+              tests:
+                - unique
+                - not_null
+
+        fct_gdpr_deletion_requests:
+          +description: "GDPR deletion request tracking"
+          +tags: ["compliance", "gdpr", "critical"]
+          columns:
+            - name: deletion_request_id
+              description: "Unique deletion request"
+              tests:
+                - unique
+                - not_null
+            - name: status
+              description: "Deletion request status"
+              tests:
+                - accepted_values:
+                    values: ['pending', 'in_progress', 'completed', 'failed']
+
+# Tests configuration
+tests:
+  not_null:
+    description: "Column must not be null"
+  unique:
+    description: "Column values must be unique"
+  accepted_values:
+    description: "Column values must be in specified list"
+  relationships:
+    description: "Foreign key must reference existing primary key"
+
+# Seeds (reference data)
+seeds:
+  product_catalog:
+    +description: "Product catalog reference data"
+    +column_types:
+      product_id: string
+      product_name: string
+      product_category: string
+
+  exchange_rates:
+    +description: "Daily exchange rates for multi-currency conversion"
+    +column_types:
+      rate_date: date
+      from_currency: string
+      to_currency: string
+      rate: numeric
+
+# Snapshots (SCD implementation)
+snapshots:
+  customer_snapshot:
+    +unique_key: customer_id
+    +strategy: timestamp
+    +updated_at: updated_at
+    +description: "Customer dimension SCD Type 2"
+
+  subscription_snapshot:
+    +unique_key: subscription_id
+    +strategy: timestamp
+    +updated_at: updated_at
+    +description: "Subscription status changes"

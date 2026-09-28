@@ -1,0 +1,338 @@
+# Kafka Configuration for Real-Time Data Warehouse Ingestion
+# Handles event streaming from all source systems
+
+version: "3.8"
+
+services:
+  # Kafka Broker Cluster
+  kafka-broker-1:
+    image: confluentinc/cp-kafka:7.6.0
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-broker-1:29092,PLAINTEXT_HOST://kafka-broker-1:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_COMPRESSION_TYPE: snappy
+      KAFKA_LOG_RETENTION_MS: 604800000  # 7 days
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824  # 1GB
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    volumes:
+      - kafka-broker-1-data:/var/lib/kafka/data
+    depends_on:
+      - zookeeper
+    networks:
+      - warehouse
+
+  kafka-broker-2:
+    image: confluentinc/cp-kafka:7.6.0
+    environment:
+      KAFKA_BROKER_ID: 2
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-broker-2:29092,PLAINTEXT_HOST://kafka-broker-2:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_COMPRESSION_TYPE: snappy
+    ports:
+      - "9093:9093"
+      - "29093:29092"
+    volumes:
+      - kafka-broker-2-data:/var/lib/kafka/data
+    depends_on:
+      - zookeeper
+    networks:
+      - warehouse
+
+  kafka-broker-3:
+    image: confluentinc/cp-kafka:7.6.0
+    environment:
+      KAFKA_BROKER_ID: 3
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-broker-3:29092,PLAINTEXT_HOST://kafka-broker-3:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_COMPRESSION_TYPE: snappy
+    ports:
+      - "9094:9094"
+      - "29094:29092"
+    volumes:
+      - kafka-broker-3-data:/var/lib/kafka/data
+    depends_on:
+      - zookeeper
+    networks:
+      - warehouse
+
+  # Zookeeper for Kafka Coordination
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_SYNC_LIMIT: 5
+      ZOOKEEPER_INIT_LIMIT: 10
+      ZOOKEEPER_SERVER_CNXN_SOCKET: org.apache.zookeeper.server.NettyServerCnxnSocket
+    ports:
+      - "2181:2181"
+    volumes:
+      - zookeeper-data:/var/lib/zookeeper/data
+      - zookeeper-logs:/var/lib/zookeeper/log
+    networks:
+      - warehouse
+
+  # Schema Registry for Avro schemas
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.6.0
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: "kafka-broker-1:29092,kafka-broker-2:29092,kafka-broker-3:29092"
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      SCHEMA_REGISTRY_DEBUG: "true"
+      SCHEMA_REGISTRY_SCHEMA_COMPATIBILITY_LEVEL: BACKWARD_TRANSITIVE
+    ports:
+      - "8081:8081"
+    depends_on:
+      - kafka-broker-1
+      - kafka-broker-2
+      - kafka-broker-3
+    networks:
+      - warehouse
+
+  # Kafka Connect for integrations
+  kafka-connect:
+    image: confluentinc/cp-kafka-connect:7.6.0
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: "kafka-broker-1:29092,kafka-broker-2:29092,kafka-broker-3:29092"
+      CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
+      CONNECT_REST_PORT: 8083
+      CONNECT_GROUP_ID: warehouse-connect
+      CONNECT_CONFIG_STORAGE_TOPIC: connect-configs
+      CONNECT_OFFSET_STORAGE_TOPIC: connect-offsets
+      CONNECT_STATUS_STORAGE_TOPIC: connect-status
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 3
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 3
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 3
+      CONNECT_KEY_CONVERTER: "io.confluent.connect.avro.AvroConverter"
+      CONNECT_VALUE_CONVERTER: "io.confluent.connect.avro.AvroConverter"
+      CONNECT_KEY_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      CONNECT_PLUGIN_PATH: "/usr/share/java,/usr/share/confluent-hub-components"
+    ports:
+      - "8083:8083"
+    volumes:
+      - kafka-connect-data:/var/lib/kafka/connect
+    depends_on:
+      - kafka-broker-1
+      - schema-registry
+    networks:
+      - warehouse
+    command: >
+      bash -c
+      "confluent-hub install --no-prompt confluentinc/kafka-connect-datagen:latest
+      && confluent-hub install --no-prompt confluentinc/kafka-connect-gcs:latest
+      && confluent-hub install --no-prompt confluentinc/kafka-connect-http:latest
+      && /etc/confluent/docker/run"
+
+  # Kafka UI for monitoring
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: warehouse
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka-broker-1:29092,kafka-broker-2:29092,kafka-broker-3:29092"
+      KAFKA_CLUSTERS_0_SCHEMAREGISTRY: "http://schema-registry:8081"
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_NAME: kafka-connect
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_ADDRESS: http://kafka-connect:8083
+    depends_on:
+      - kafka-broker-1
+      - schema-registry
+      - kafka-connect
+    networks:
+      - warehouse
+
+volumes:
+  zookeeper-data:
+  zookeeper-logs:
+  kafka-broker-1-data:
+  kafka-broker-2-data:
+  kafka-broker-3-data:
+  kafka-connect-data:
+
+networks:
+  warehouse:
+    driver: bridge
+
+---
+
+# Kafka Topics Configuration
+# Topics for different data streams
+
+topics:
+  transactions:
+    partitions: 12
+    replication_factor: 3
+    config:
+      compression_type: snappy
+      retention_ms: 604800000  # 7 days
+      segment_ms: 86400000     # 1 day
+      min_insync_replicas: 2
+      cleanup_policy: delete
+    schema: |
+      {
+        "type": "record",
+        "namespace": "com.mnb.financial",
+        "name": "Transaction",
+        "fields": [
+          {"name": "transaction_id", "type": "string"},
+          {"name": "source_system", "type": "string"},
+          {"name": "product_code", "type": "string"},
+          {"name": "customer_id", "type": "string"},
+          {"name": "merchant_id", "type": ["null", "string"]},
+          {"name": "amount", "type": "double"},
+          {"name": "currency_code", "type": "string"},
+          {"name": "transaction_type", "type": "string"},
+          {"name": "timestamp", "type": "long"},
+          {"name": "status", "type": "string"},
+          {"name": "metadata", "type": ["null", "string"]}
+        ]
+      }
+
+  user_events:
+    partitions: 24
+    replication_factor: 3
+    config:
+      compression_type: snappy
+      retention_ms: 604800000  # 7 days
+      segment_ms: 86400000
+      min_insync_replicas: 2
+      cleanup_policy: delete
+    schema: |
+      {
+        "type": "record",
+        "namespace": "com.mnb.product",
+        "name": "UserEvent",
+        "fields": [
+          {"name": "event_id", "type": "string"},
+          {"name": "user_id", "type": "string"},
+          {"name": "event_type", "type": "string"},
+          {"name": "product_code", "type": "string"},
+          {"name": "timestamp", "type": "long"},
+          {"name": "session_id", "type": "string"},
+          {"name": "device_type", "type": "string"},
+          {"name": "properties", "type": ["null", "string"]}
+        ]
+      }
+
+  subscription_events:
+    partitions: 6
+    replication_factor: 3
+    config:
+      compression_type: snappy
+      retention_ms: 2592000000  # 30 days
+      segment_ms: 86400000
+      min_insync_replicas: 2
+      cleanup_policy: delete
+
+  compliance_events:
+    partitions: 3
+    replication_factor: 3
+    config:
+      compression_type: snappy
+      retention_ms: 31536000000  # 1 year (legal requirement)
+      segment_ms: 604800000      # 7 days
+      min_insync_replicas: 3     # Strict durability
+      cleanup_policy: delete
+
+  mlfeatures:
+    partitions: 12
+    replication_factor: 3
+    config:
+      compression_type: snappy
+      retention_ms: 2592000000  # 30 days
+      min_insync_replicas: 2
+
+# Consumer Groups Configuration
+consumer_groups:
+  warehouse-consumer:
+    description: "Main warehouse ingestion consumer"
+    topics:
+      - transactions
+      - user_events
+      - subscription_events
+    offsets_storage: kafka
+    group_initial_rebalance_delay_ms: 3000
+    auto_offset_reset: earliest
+    enable_auto_commit: true
+    auto_commit_interval_ms: 5000
+
+  analytics-consumer:
+    description: "Real-time analytics consumer"
+    topics:
+      - transactions
+      - user_events
+    offsets_storage: kafka
+    auto_offset_reset: latest
+    enable_auto_commit: false
+
+  ml-consumer:
+    description: "ML feature extraction consumer"
+    topics:
+      - transactions
+      - user_events
+    offsets_storage: kafka
+    auto_offset_reset: earliest
+
+  compliance-consumer:
+    description: "Compliance audit logging consumer"
+    topics:
+      - compliance_events
+      - transactions
+    offsets_storage: kafka
+    auto_offset_reset: earliest
+    enable_auto_commit: false  # Manual offset management for audit
+
+# Kafka Connect Connectors
+connectors:
+  gcs-sink-transactions:
+    class: "io.confluent.connect.gcs.GcsSinkConnector"
+    topics: "transactions"
+    gcs_bucket_name: "{PROJECT_ID}-warehouse-raw"
+    gcs_folder_prefix: "transactions/"
+    format_class: "io.confluent.connect.gcs.format.avro.AvroFormat"
+    partitioner_class: "io.confluent.connect.storage.partitioner.DefaultPartitioner"
+    path_format: "year=YYYY/month=MM/day=dd/hour=HH/"
+    file_max_records: 100000
+    flush_size: 50000
+    rotate_interval_ms: 3600000  # 1 hour
+    tasks_max: 8
+
+  gcs-sink-user-events:
+    class: "io.confluent.connect.gcs.GcsSinkConnector"
+    topics: "user_events"
+    gcs_bucket_name: "{PROJECT_ID}-warehouse-raw"
+    gcs_folder_prefix: "user_events/"
+    format_class: "io.confluent.connect.gcs.format.avro.AvroFormat"
+    partitioner_class: "io.confluent.connect.storage.partitioner.DefaultPartitioner"
+    path_format: "year=YYYY/month=MM/day=dd/hour=HH/"
+    file_max_records: 100000
+    tasks_max: 16
+
+  bigquery-sink-transactions:
+    class: "com.wepay.kafka.connect.bigquery.BigQuerySinkConnector"
+    topics: "transactions"
+    defaultDataset: "{PROJECT_ID}.warehouse_staging"
+    autoCreateTables: "true"
+    mergeIntervalMs: "300000"
+    tasks_max: 4
+    keyfile: "/secrets/bigquery-keyfile.json"
