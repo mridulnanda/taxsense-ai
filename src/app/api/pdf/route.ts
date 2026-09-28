@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
       generatedFor: name,
     });
 
-    const sb = supabaseServer();
+    const sb = await supabaseServer();
     if (sb) {
       const { data } = await sb.auth.getUser();
       if (data.user)

@@ -12,9 +12,9 @@ export const supabaseConfigured = () =>
   !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 /** Cookie-bound client for the logged-in user (RLS enforced). */
-export function supabaseServer(): SupabaseClient | null {
+export async function supabaseServer(): Promise<SupabaseClient | null> {
   if (!supabaseConfigured()) return null;
-  const store = cookies();
+  const store = await cookies();
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,

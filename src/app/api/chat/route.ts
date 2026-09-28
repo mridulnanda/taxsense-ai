@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
     const turn = await runIntakeTurn(state, history, message);
 
     // best-effort persistence of the transcript (never blocks the reply)
-    const sb = supabaseServer();
+    const sb = await supabaseServer();
     if (sb) {
       const { data } = await sb.auth.getUser();
       if (data.user && body.profileId) {

@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
   if (!profile) return NextResponse.json({ error: "profile required" }, { status: 400 });
   const computation = computeBoth(profile);
 
-  const sb = supabaseServer();
+  const sb = await supabaseServer();
   if (!sb) {
     demoStore.set("demo-user", {
       profile,
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
 
 /** Load the user's latest profile. */
 export async function GET() {
-  const sb = supabaseServer();
+  const sb = await supabaseServer();
   if (!sb) {
     const rec = demoStore.get("demo-user");
     return NextResponse.json({ record: rec ?? null, mode: "demo" });

@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
  *  DELETE → queue account deletion (30-day grace, then hard purge)
  */
 export async function GET() {
-  const sb = supabaseServer();
+  const sb = await supabaseServer();
   if (!sb) return NextResponse.json({ export: demoStore.get("demo-user") ?? {}, mode: "demo" });
   const { data: auth } = await sb.auth.getUser();
   if (!auth.user) return NextResponse.json({ error: "sign in required" }, { status: 401 });
@@ -30,7 +30,7 @@ export async function GET() {
 }
 
 export async function DELETE(_req: NextRequest) {
-  const sb = supabaseServer();
+  const sb = await supabaseServer();
   if (!sb) {
     demoStore.delete("demo-user");
     return NextResponse.json({ deleted: true, mode: "demo" });

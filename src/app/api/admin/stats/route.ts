@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 /** Admin metrics — aggregates only, never raw financial data. */
 export async function GET() {
-  const sb = supabaseServer();
+  const sb = await supabaseServer();
   if (!sb) {
     // demo mode
     return NextResponse.json({
