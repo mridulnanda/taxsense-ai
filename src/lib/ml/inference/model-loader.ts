@@ -5,6 +5,7 @@
 
 import { type TaxpayerFeatures, type ModelMetadata, type ModelType } from "../types";
 import { BaseModel, RuleBasedModel, RegressionModel, ClassificationModel, AnomalyDetectionModel } from "../models/base-model";
+import { modelRegistry } from "../models/model-registry";
 
 /**
  * In-memory model cache with TTL
@@ -65,6 +66,7 @@ export class InferenceEngine {
 
   /**
    * Load a model by type
+   * Tries model registry first, falls back to legacy implementations
    */
   async loadModel(modelType: ModelType): Promise<BaseModel> {
     const cacheKey = `model_${modelType}`;
@@ -76,70 +78,73 @@ export class InferenceEngine {
 
     let model: BaseModel;
 
-    // In production, this would load from disk/cloud storage
-    // For now, use fallback rule-based models
-    switch (modelType) {
-      case "tax_liability":
-        model = new RuleBasedModel({
-          type: "tax_liability",
-          algorithm: "rule_based",
-          hyperparameters: {},
-          feature_names: Object.keys(new Object()) as string[],
-        });
-        break;
+    try {
+      // Try loading from model registry (all 15 specialized models)
+      model = await modelRegistry.loadModel(modelType);
+    } catch (error) {
+      // Fallback to legacy implementations for backwards compatibility
+      console.warn(`Failed to load model from registry: ${modelType}, using fallback`);
 
-      case "regime_recommender":
-        model = new RegimeRecommenderFallback({
-          type: "regime_recommender",
-          algorithm: "logistic_regression",
-          hyperparameters: {},
-          feature_names: [],
-        });
-        break;
+      switch (modelType) {
+        case "tax_liability":
+          model = new RuleBasedModel({
+            type: "tax_liability",
+            algorithm: "rule_based",
+            hyperparameters: {},
+            feature_names: [],
+          });
+          break;
 
-      case "deduction_optimizer":
-        model = new DeductionOptimizerFallback({
-          type: "deduction_optimizer",
-          algorithm: "gradient_boosting",
-          hyperparameters: {},
-          feature_names: [],
-        });
-        break;
+        case "regime_recommender":
+          model = new RegimeRecommenderFallback({
+            type: "regime_recommender",
+            algorithm: "logistic_regression",
+            hyperparameters: {},
+            feature_names: [],
+          });
+          break;
 
-      case "income_anomaly_detector":
-        model = new AnomalyDetectorFallback({
-          type: "income_anomaly_detector",
-          algorithm: "isolation_forest",
-          hyperparameters: {},
-          feature_names: [],
-        });
-        break;
+        case "deduction_optimizer":
+          model = new DeductionOptimizerFallback({
+            type: "deduction_optimizer",
+            algorithm: "gradient_boosting",
+            hyperparameters: {},
+            feature_names: [],
+          });
+          break;
 
-      case "audit_risk_scorer":
-        model = new AuditRiskScorerFallback({
-          type: "audit_risk_scorer",
-          algorithm: "logistic_regression",
-          hyperparameters: {},
-          feature_names: [],
-        });
-        break;
+        case "income_anomaly_detector":
+          model = new AnomalyDetectorFallback({
+            type: "income_anomaly_detector",
+            algorithm: "isolation_forest",
+            hyperparameters: {},
+            feature_names: [],
+          });
+          break;
 
-      case "savings_forecaster":
-        model = new SavingsForecastFallback({
-          type: "savings_forecaster",
-          algorithm: "lstm",
-          hyperparameters: {},
-          feature_names: [],
-        });
-        break;
+        case "audit_risk_scorer":
+          model = new AuditRiskScorerFallback({
+            type: "audit_risk_scorer",
+            algorithm: "logistic_regression",
+            hyperparameters: {},
+            feature_names: [],
+          });
+          break;
 
-      default:
-        throw new Error(`Unknown model type: ${modelType}`);
+        default:
+          // Use rule-based fallback for all other model types
+          model = new RuleBasedModel({
+            type: modelType,
+            algorithm: "rule_based",
+            hyperparameters: {},
+            feature_names: [],
+          });
+      }
+
+      await model.load();
     }
 
-    await model.load();
     this.cache.set(cacheKey, model);
-
     return model;
   }
 

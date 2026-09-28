@@ -113,21 +113,154 @@ export interface SavingsForecast extends ModelPrediction {
   }>;
 }
 
+export interface QuarterlyTaxForecast extends ModelPrediction {
+  model_type: "quarterly_tax_forecaster";
+  quarterly_taxes: Array<{
+    quarter: number;
+    estimated_tax: number;
+    confidence_lower: number;
+    confidence_upper: number;
+  }>;
+}
+
+export interface TaxLossHarvestRecommendation extends ModelPrediction {
+  model_type: "tax_loss_harvester";
+  suggestions: Array<{
+    security_id: string;
+    symbol: string;
+    current_loss: number;
+    harvest_benefit: number;
+    wash_sale_risk: number;
+  }>;
+  total_potential_savings: number;
+}
+
+export interface IncomeShiftingOptimization extends ModelPrediction {
+  model_type: "income_shifting_optimizer";
+  optimal_distribution: Record<string, number>;
+  current_tax: number;
+  optimized_tax: number;
+  total_savings: number;
+  strategies: Array<{
+    strategy: string;
+    tax_savings: number;
+    feasibility: number;
+  }>;
+}
+
+export interface BusinessStructureRecommendation extends ModelPrediction {
+  model_type: "business_structure_optimizer";
+  recommended_structure: "sole_proprietor" | "partnership" | "llc" | "s_corp" | "c_corp";
+  current_tax: number;
+  recommended_tax: number;
+  annual_tax_savings: number;
+  setup_cost: number;
+  net_benefit: number;
+}
+
+export interface CharitableGivingOptimization extends ModelPrediction {
+  model_type: "charitable_giving_optimizer";
+  recommended_donation: number;
+  tax_benefit: number;
+  deduction_capacity_remaining: number;
+  strategies: Array<{
+    strategy: string;
+    donation_amount: number;
+    tax_benefit: number;
+  }>;
+}
+
+export interface EstimatedTaxPlan extends ModelPrediction {
+  model_type: "estimated_tax_planner";
+  quarterly_payments: Array<{
+    quarter: number;
+    estimated_payment: number;
+    deadline: string;
+  }>;
+  total_annual_estimate: number;
+  payment_frequency: "quarterly" | "monthly" | "annual";
+}
+
+export interface ExpenseClassification extends ModelPrediction {
+  model_type: "expense_classifier";
+  category: string;
+  confidence: number;
+  is_deductible: boolean;
+  deduction_type?: string;
+  similar_expenses_count?: number;
+}
+
+export interface DepreciationOptimization extends ModelPrediction {
+  model_type: "depreciation_optimizer";
+  recommended_method: "section_179" | "macrs" | "straight_line";
+  asset_category: string;
+  annual_deduction: number;
+  total_tax_benefit: number;
+  recovery_period: number;
+}
+
+export interface RetirementSavingsOptimization extends ModelPrediction {
+  model_type: "retirement_savings_optimizer";
+  recommended_contribution: number;
+  account_type: "401k" | "ira" | "roth_ira" | "sep_ira" | "solo_401k" | "rrsp" | "tfsa";
+  tax_benefit: number;
+  employer_match_potential: number;
+  allocation: Record<string, number>;
+  projection_at_retirement: number;
+}
+
+export interface InternationalTaxPlan extends ModelPrediction {
+  model_type: "international_tax_planner";
+  countries: Array<{
+    country_code: string;
+    country_name: string;
+    income: number;
+    local_tax: number;
+    treaty_benefits: number;
+  }>;
+  total_global_tax: number;
+  treaty_optimization_savings: number;
+  compliance_requirements: string[];
+  recommendations: Array<{
+    recommendation: string;
+    annual_savings: number;
+  }>;
+}
+
 export type AnyPrediction =
   | TaxLiabilityPrediction
   | RegimeRecommendation
   | DeductionOptimization
   | AnomalyDetection
   | AuditRiskScore
-  | SavingsForecast;
+  | SavingsForecast
+  | QuarterlyTaxForecast
+  | TaxLossHarvestRecommendation
+  | IncomeShiftingOptimization
+  | BusinessStructureRecommendation
+  | CharitableGivingOptimization
+  | EstimatedTaxPlan
+  | ExpenseClassification
+  | DepreciationOptimization
+  | RetirementSavingsOptimization
+  | InternationalTaxPlan;
 
 export type ModelType =
   | "tax_liability"
-  | "regime_recommender"
-  | "deduction_optimizer"
+  | "quarterly_tax_forecaster"
   | "income_anomaly_detector"
   | "audit_risk_scorer"
-  | "savings_forecaster";
+  | "deduction_optimizer"
+  | "tax_loss_harvester"
+  | "income_shifting_optimizer"
+  | "business_structure_optimizer"
+  | "charitable_giving_optimizer"
+  | "regime_recommender"
+  | "estimated_tax_planner"
+  | "expense_classifier"
+  | "depreciation_optimizer"
+  | "retirement_savings_optimizer"
+  | "international_tax_planner";
 
 /* ===== Model Management ===== */
 

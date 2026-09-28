@@ -8,10 +8,29 @@ export * from "./types";
 
 // Pipeline
 export { FeatureEngineer, FeatureScaler, DataSplitter } from "./pipeline/feature-engineering";
-export { DataCollector, SyntheticDataGenerator, DataExporter } from "./pipeline/data-collection";
+export { DataCollector, DataExporter } from "./pipeline/data-collection";
+export { SyntheticDataGenerator, generateTrainingData, generateBalancedTrainingSet } from "./pipeline/synthetic-data-generator";
 
 // Models
 export { BaseModel, RegressionModel, ClassificationModel, AnomalyDetectionModel, NeuralNetworkModel, RuleBasedModel } from "./models/base-model";
+export {
+  TaxLiabilityModel,
+  QuarterlyTaxForecasterModel,
+  IncomeAnomalyDetectorModel,
+  AuditRiskScorerModel,
+  DeductionMaximizerModel,
+  TaxLossHarvesterModel,
+  IncomeShiftingOptimizerModel,
+  BusinessStructureOptimizerModel,
+  CharitableGivingOptimizerModel,
+  RegimeRecommenderModel,
+  EstimatedTaxPlannerModel,
+  ExpenseClassifierModel,
+  DepreciationOptimizerModel,
+  RetirementSavingsOptimizerModel,
+  InternationalTaxPlannerModel,
+} from "./models/specialized-models";
+export { ModelRegistry, modelRegistry } from "./models/model-registry";
 
 // Inference
 export { InferenceEngine, BatchInferenceProcessor } from "./inference/model-loader";
