@@ -1,0 +1,89 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Expo
+.expo/
+.expo-shared/
+dist/
+build/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.iml
+
+# Mobile
+ios/Pods/
+ios/Podfile.lock
+android/.gradle/
+android/local.properties
+android/captures/
+*.jks
+*.keystore
+
+# Certificates and Keys
+*.p8
+*.p12
+*.pfx
+*.pem
+*.key
+*.cert
+
+# Build outputs
+build/
+dist/
+eas-build-job-*.json
+*.ipa
+*.apk
+*.aab
+
+# Testing
+coverage/
+.nyc_output/
+
+# Logs
+logs/
+*.log
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# EAS Build
+.eas/
+
+# React Native/Expo
+.gradle/
+*.jsbundle
+
+# Temporary files
+*.tmp
+temp/
+tmp/
+
+# Cache
+.cache/
+*.cache
+
+# Sensitive data
+credentials.json
+google-services.json
+.firebase/
+
+# Project specific
+debug.keystore
+upload-key.jks

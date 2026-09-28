@@ -1,15 +1,19 @@
-# TaxSense AI - Fintech Integrations
+# TaxSense Global - Enterprise Integration Layer
 
-Comprehensive integrations with India's major fintech platforms and banking APIs for seamless data ingestion and multi-platform deployment.
+Production-grade integration platform for accounting, banking, payroll, and investment platforms. Unified API for 30+ global financial services with OAuth2, real-time webhooks, and automatic data sync.
 
 ## Architecture Overview
 
-The integration system is built on three core components:
+The integration system is built on enterprise-grade core components:
 
-1. **Bank Integrations**: Direct connections to major Indian banks for account and transaction data
-2. **Fintech Platforms**: Payment gateway and UPI integrations for transaction processing
-3. **Data Sync Engine**: Automatic data synchronization with rate limiting and retry logic
-4. **Webhook System**: Real-time data updates via webhook handlers
+1. **Core Sync Engine**: OAuth2/OAuth1 authentication, token refresh, rate limiting, retry logic, data normalization, conflict resolution
+2. **Accounting Integrations**: QuickBooks, Xero, FreshBooks with 30+ API endpoints
+3. **Banking Integrations**: US, UK, Canada, Singapore, Australia banks with PSD2 compliance
+4. **Payroll Integrations**: ADP, Workday, BambooHR for employee and compensation data
+5. **Investment Integrations**: Stock brokers (Interactive Brokers, Schwab, Fidelity, Vanguard) and crypto (Coinbase, Kraken)
+6. **Webhook System**: Secure real-time updates with signature verification
+7. **Integration Dashboard**: Connected accounts overview, sync status, error management
+8. **API Endpoints**: 40+ production endpoints for full integration lifecycle
 
 ## Directory Structure
 

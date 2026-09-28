@@ -1,9 +1,21 @@
 import { z } from 'zod';
 import pino from 'pino';
+import crypto from 'crypto';
+
+/**
+ * Core sync engine for enterprise integrations
+ * Handles OAuth2, webhooks, rate limiting, retry logic, data normalization, conflict resolution
+ */
 
 const SyncConfigSchema = z.object({
   integrationId: z.string(),
-  integrationType: z.enum(['bank', 'fintech', 'investment', 'insurance', 'efiling']),
+  integrationType: z.enum([
+    'accounting',
+    'banking',
+    'payroll',
+    'investment',
+    'insurance',
+  ]),
   userId: z.string(),
   accessToken: z.string(),
   refreshToken: z.string().optional(),
@@ -12,28 +24,90 @@ const SyncConfigSchema = z.object({
   lastSyncAt: z.number().optional(),
   retryAttempts: z.number().default(3),
   retryDelay: z.number().default(1000), // 1 second
+  webhookSecret: z.string().optional(),
+  metadata: z.record(z.any()).optional(),
 });
 
 export type SyncConfig = z.infer<typeof SyncConfigSchema>;
 
-interface SyncResult {
+export interface SyncResult {
   success: boolean;
   recordsCount: number;
   lastSyncAt: number;
   nextSyncAt: number;
   error?: string;
+  duration?: number;
 }
 
-interface RateLimitConfig {
-  requestsPerSecond: number;
-  burstSize: number;
+export interface DataNormalizationSchema {
+  id: string;
+  timestamp: number;
+  source: string;
+  data: Record<string, any>;
+  hash: string; // For conflict detection
 }
 
+export interface ConflictResolution {
+  recordId: string;
+  conflicts: Array<{
+    field: string;
+    local: any;
+    remote: any;
+    timestamp: number;
+  }>;
+  resolution: 'local' | 'remote' | 'manual';
+  resolvedAt: number;
+}
+
+/**
+ * Token bucket rate limiter
+ */
+class RateLimiter {
+  private tokens: number;
+  private lastRefillTime: number;
+  private readonly capacity: number;
+  private readonly refillRate: number;
+
+  constructor(requestsPerSecond: number, windowMs: number = 1000) {
+    this.capacity = requestsPerSecond;
+    this.tokens = requestsPerSecond;
+    this.refillRate = requestsPerSecond / (windowMs / 1000);
+    this.lastRefillTime = Date.now();
+  }
+
+  private refill(): void {
+    const now = Date.now();
+    const elapsedSeconds = (now - this.lastRefillTime) / 1000;
+    const tokensToAdd = elapsedSeconds * this.refillRate;
+
+    this.tokens = Math.min(this.capacity, this.tokens + tokensToAdd);
+    this.lastRefillTime = now;
+  }
+
+  async acquire(): Promise<void> {
+    while (true) {
+      this.refill();
+
+      if (this.tokens >= 1) {
+        this.tokens -= 1;
+        return;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  }
+}
+
+/**
+ * Main sync engine
+ */
 export class DataSyncEngine {
   private logger = pino();
   private syncConfigs: Map<string, SyncConfig> = new Map();
   private rateLimiters: Map<string, RateLimiter> = new Map();
   private syncIntervals: Map<string, NodeJS.Timeout> = new Map();
+  private normalizedData: Map<string, DataNormalizationSchema[]> = new Map();
+  private conflictLog: Map<string, ConflictResolution[]> = new Map();
 
   /**
    * Register sync configuration
@@ -48,8 +122,8 @@ export class DataSyncEngine {
       'Sync registered'
     );
 
-    // Initialize rate limiter
-    const rateLimiter = new RateLimiter(10, 1000); // 10 requests per second
+    // Initialize rate limiter (10 requests per second by default)
+    const rateLimiter = new RateLimiter(10, 1000);
     this.rateLimiters.set(key, rateLimiter);
   }
 
@@ -64,7 +138,6 @@ export class DataSyncEngine {
       throw new Error(`Sync configuration not found for ${key}`);
     }
 
-    // Clear existing interval if any
     this.stopSync(userId, integrationId);
 
     // Run sync immediately
@@ -124,6 +197,7 @@ export class DataSyncEngine {
           recordsCount,
           lastSyncAt: startTime,
           nextSyncAt: startTime + config.syncInterval,
+          duration,
         };
 
         this.logger.info(
@@ -131,7 +205,6 @@ export class DataSyncEngine {
           'Sync completed successfully'
         );
 
-        // Update last sync time
         config.lastSyncAt = startTime;
         this.syncConfigs.set(key, config);
 
@@ -140,7 +213,7 @@ export class DataSyncEngine {
         lastError = error instanceof Error ? error : new Error(String(error));
 
         if (attempt < config.retryAttempts) {
-          const delay = config.retryDelay * Math.pow(2, attempt); // Exponential backoff
+          const delay = config.retryDelay * Math.pow(2, attempt);
           this.logger.warn(
             { key, attempt, delay, error: lastError.message },
             'Sync attempt failed, retrying...'
@@ -156,18 +229,129 @@ export class DataSyncEngine {
   }
 
   /**
-   * Perform actual sync (to be implemented by subclasses)
+   * Normalize data to standard format
    */
-  private async performSync(config: SyncConfig): Promise<number> {
-    // This is where the actual API calls would happen
-    // For now, return 0 as placeholder
+  normalizeData(
+    source: string,
+    data: Record<string, any>
+  ): DataNormalizationSchema {
+    const hash = crypto
+      .createHash('sha256')
+      .update(JSON.stringify(data))
+      .digest('hex');
+
+    return {
+      id: crypto.randomUUID(),
+      timestamp: Date.now(),
+      source,
+      data,
+      hash,
+    };
+  }
+
+  /**
+   * Detect and resolve conflicts
+   */
+  async resolveConflicts(
+    recordId: string,
+    local: Record<string, any>,
+    remote: Record<string, any>,
+    strategy: 'local' | 'remote' | 'merge' = 'remote'
+  ): Promise<Record<string, any>> {
+    const conflicts: ConflictResolution['conflicts'] = [];
+
+    for (const key in local) {
+      if (local[key] !== remote[key]) {
+        conflicts.push({
+          field: key,
+          local: local[key],
+          remote: remote[key],
+          timestamp: Date.now(),
+        });
+      }
+    }
+
+    if (conflicts.length === 0) {
+      return remote;
+    }
+
+    const resolution: ConflictResolution = {
+      recordId,
+      conflicts,
+      resolution: strategy,
+      resolvedAt: Date.now(),
+    };
+
+    // Log conflict for audit trail
+    const conflictKey = recordId;
+    if (!this.conflictLog.has(conflictKey)) {
+      this.conflictLog.set(conflictKey, []);
+    }
+    this.conflictLog.get(conflictKey)!.push(resolution);
+
+    this.logger.warn(
+      { recordId, conflictCount: conflicts.length },
+      'Conflicts detected and resolved'
+    );
+
+    // Merge based on strategy
+    if (strategy === 'local') {
+      return local;
+    } else if (strategy === 'merge') {
+      return { ...remote, ...local };
+    }
+
+    return remote;
+  }
+
+  /**
+   * Perform actual sync (to be overridden by specific implementations)
+   */
+  protected async performSync(config: SyncConfig): Promise<number> {
+    this.logger.debug(
+      { integrationId: config.integrationId },
+      'Performing sync'
+    );
+    // To be implemented by specific integration adapters
     return 0;
+  }
+
+  /**
+   * OAuth2 token refresh
+   */
+  async refreshToken(
+    userId: string,
+    integrationId: string,
+    refreshTokenFn: (token: string) => Promise<{ accessToken: string; expiresIn: number }>
+  ): Promise<void> {
+    const key = `${userId}-${integrationId}`;
+    const config = this.syncConfigs.get(key);
+
+    if (!config || !config.refreshToken) {
+      throw new Error('No refresh token available');
+    }
+
+    try {
+      const { accessToken, expiresIn } = await refreshTokenFn(
+        config.refreshToken
+      );
+      this.updateToken(userId, integrationId, accessToken, expiresIn);
+      this.logger.info({ key }, 'Token refreshed successfully');
+    } catch (error) {
+      this.logger.error({ error, key }, 'Token refresh failed');
+      throw error;
+    }
   }
 
   /**
    * Update access token
    */
-  updateToken(userId: string, integrationId: string, token: string, expiresIn: number): void {
+  updateToken(
+    userId: string,
+    integrationId: string,
+    token: string,
+    expiresIn: number
+  ): void {
     const key = `${userId}-${integrationId}`;
     const config = this.syncConfigs.get(key);
 
@@ -197,11 +381,7 @@ export class DataSyncEngine {
   /**
    * Get sync status
    */
-  getSyncStatus(userId: string, integrationId: string): {
-    isRunning: boolean;
-    lastSyncAt?: Date;
-    nextSyncAt?: Date;
-  } {
+  getSyncStatus(userId: string, integrationId: string) {
     const key = `${userId}-${integrationId}`;
     const isRunning = this.syncIntervals.has(key);
     const config = this.syncConfigs.get(key);
@@ -212,118 +392,86 @@ export class DataSyncEngine {
       nextSyncAt: config?.lastSyncAt
         ? new Date(config.lastSyncAt + config.syncInterval)
         : undefined,
+      recordCount: this.normalizedData.get(key)?.length || 0,
     };
+  }
+
+  /**
+   * Get conflict log
+   */
+  getConflictLog(recordId: string): ConflictResolution[] {
+    return this.conflictLog.get(recordId) || [];
   }
 
   /**
    * Sleep helper
    */
-  private sleep(ms: number): Promise<void> {
+  protected sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
 
 /**
- * Rate limiter using token bucket algorithm
- */
-class RateLimiter {
-  private tokens: number;
-  private lastRefillTime: number;
-  private readonly capacity: number;
-  private readonly refillRate: number; // tokens per second
-
-  constructor(requestsPerSecond: number, windowMs: number = 1000) {
-    this.capacity = requestsPerSecond;
-    this.tokens = requestsPerSecond;
-    this.refillRate = requestsPerSecond / (windowMs / 1000);
-    this.lastRefillTime = Date.now();
-  }
-
-  /**
-   * Refill tokens based on elapsed time
-   */
-  private refill(): void {
-    const now = Date.now();
-    const elapsedSeconds = (now - this.lastRefillTime) / 1000;
-    const tokensToAdd = elapsedSeconds * this.refillRate;
-
-    this.tokens = Math.min(this.capacity, this.tokens + tokensToAdd);
-    this.lastRefillTime = now;
-  }
-
-  /**
-   * Acquire a token (with optional wait)
-   */
-  async acquire(): Promise<void> {
-    while (true) {
-      this.refill();
-
-      if (this.tokens >= 1) {
-        this.tokens -= 1;
-        return;
-      }
-
-      // Wait a bit before retrying
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-  }
-}
-
-/**
- * Webhook handler for automatic data sync
+ * Webhook handler for real-time sync
  */
 export class WebhookHandler {
   private logger = pino();
   private syncEngine: DataSyncEngine;
+  private webhookSecrets: Map<string, string> = new Map();
 
   constructor(syncEngine: DataSyncEngine) {
     this.syncEngine = syncEngine;
   }
 
   /**
-   * Handle bank transaction webhook
+   * Verify webhook signature
    */
-  async handleBankWebhook(
-    userId: string,
-    integrationId: string,
-    payload: Record<string, any>
-  ): Promise<void> {
-    this.logger.info(
-      { userId, integrationId, eventType: payload.type },
-      'Bank webhook received'
-    );
+  verifySignature(
+    payload: string,
+    signature: string,
+    secret: string
+  ): boolean {
+    const expectedSignature = crypto
+      .createHmac('sha256', secret)
+      .update(payload)
+      .digest('hex');
 
-    // Trigger immediate sync after transaction
-    try {
-      await this.syncEngine.executeSync(userId, integrationId);
-    } catch (error) {
-      this.logger.error(
-        { error, userId, integrationId },
-        'Webhook sync failed'
-      );
-    }
+    return crypto.timingSafeEqual(
+      Buffer.from(signature),
+      Buffer.from(expectedSignature)
+    );
   }
 
   /**
-   * Handle payment webhook
+   * Handle incoming webhook
    */
-  async handlePaymentWebhook(
+  async handleWebhook(
     userId: string,
     integrationId: string,
-    payload: Record<string, any>
+    payload: Record<string, any>,
+    signature: string,
+    secret: string
   ): Promise<void> {
-    this.logger.info(
-      { userId, integrationId, eventType: payload.type },
-      'Payment webhook received'
-    );
-
     try {
+      // Verify signature
+      const payloadStr = JSON.stringify(payload);
+      if (!this.verifySignature(payloadStr, signature, secret)) {
+        throw new Error('Invalid webhook signature');
+      }
+
+      this.logger.info(
+        { userId, integrationId, eventType: payload.type },
+        'Webhook received and verified'
+      );
+
+      // Trigger immediate sync
       await this.syncEngine.executeSync(userId, integrationId);
     } catch (error) {
       this.logger.error(
         { error, userId, integrationId },
-        'Payment webhook sync failed'
+        'Webhook processing failed'
       );
+      throw error;
     }
   }
 }
