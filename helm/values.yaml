@@ -1,0 +1,133 @@
+replicaCount: 3
+environment: production
+image:
+  repository: taxsense
+  tag: latest
+  pullPolicy: Always
+
+app:
+  name: taxsense-app
+  port: 3000
+  metrics:
+    port: 9090
+    enabled: true
+
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+worker:
+  enabled: true
+  replicaCount: 2
+  concurrency: 5
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 3000
+  sessionAffinity: ClientIP
+  sessionAffinityTimeout: 10800
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: app.taxsense.ai
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: taxsense-tls
+      hosts:
+        - app.taxsense.ai
+
+database:
+  host: postgres
+  port: 5432
+  name: taxsense
+  poolMin: 5
+  poolMax: 20
+
+redis:
+  host: redis
+  port: 6379
+  db: 0
+
+elasticsearch:
+  host: elasticsearch
+  port: 9200
+
+logging:
+  level: info
+  format: json
+
+monitoring:
+  enabled: true
+  prometheusPort: 9090
+  grafanaPort: 3001
+
+security:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1001
+    fsGroup: 1001
+  podSecurityPolicy: restricted
+
+persistence:
+  enabled: true
+  storageClass: fast-ssd
+  size: 10Gi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+livenessProbe:
+  httpGet:
+    path: /api/health
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /api/ready
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 2
+
+startupProbe:
+  httpGet:
+    path: /api/health
+    port: http
+  initialDelaySeconds: 0
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 30
+
+terminationGracePeriodSeconds: 45

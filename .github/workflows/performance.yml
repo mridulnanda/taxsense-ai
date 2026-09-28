@@ -1,0 +1,157 @@
+name: Performance Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 4 * * *'  # Daily at 4 AM UTC
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    name: Lighthouse Audit
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: npm run build
+
+      - name: Start server
+        run: npm start &
+        env:
+          NODE_ENV: production
+
+      - name: Wait for server
+        run: sleep 10
+
+      - name: Run Lighthouse CI
+        uses: treosh/lighthouse-ci-action@v10
+        with:
+          serverBaseUrl: http://localhost:3000
+          uploadArtifacts: true
+          temporaryPublicStorage: true
+
+  bundle-analysis:
+    runs-on: ubuntu-latest
+    name: Bundle Analysis
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build bundle
+        run: npm run build
+
+      - name: Analyze bundle
+        uses: meshcake/bundle-size-action@v1
+        with:
+          directory: ./.next
+          pattern: '**/*.{js,css}'
+
+      - name: Upload bundle stats
+        uses: actions/upload-artifact@v3
+        with:
+          name: bundle-stats
+          path: |
+            .next/bundle-stats.json
+            .next/package.json
+
+  load-test:
+    runs-on: ubuntu-latest
+    name: Load Testing
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install k6
+        run: |
+          sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6-stable.list
+          sudo apt-get update
+          sudo apt-get install -y k6
+
+      - name: Start application
+        run: |
+          npm ci
+          npm run build
+          npm start &
+        env:
+          NODE_ENV: production
+
+      - name: Wait for application
+        run: sleep 10
+
+      - name: Run load tests
+        run: |
+          k6 run load-tests/api.js \
+            --vus 10 \
+            --duration 30s \
+            --out json=load-test-results.json
+        env:
+          TARGET_URL: http://localhost:3000
+
+      - name: Parse results
+        run: |
+          npm install -g @grafana/k6-result-parser
+          k6-result-parser load-test-results.json
+
+      - name: Upload results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: load-test-results
+          path: load-test-results.json
+
+  notify:
+    runs-on: ubuntu-latest
+    needs: [lighthouse, bundle-analysis, load-test]
+    if: always()
+
+    steps:
+      - name: Notify Slack
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "Performance tests ${{ job.status }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "Performance tests ${{ job.status }}\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Results>"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

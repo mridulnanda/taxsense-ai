@@ -1,0 +1,116 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: taxsense-app
+  namespace: taxsense
+  labels:
+    app: taxsense
+    component: web
+  annotations:
+    cloud.google.com/neg: '{"ingress": true}'
+spec:
+  type: ClusterIP
+  selector:
+    app: taxsense
+    component: web
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
+      protocol: TCP
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+      protocol: TCP
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: taxsense-app-headless
+  namespace: taxsense
+  labels:
+    app: taxsense
+    component: web
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app: taxsense
+    component: web
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: taxsense-worker
+  namespace: taxsense
+  labels:
+    app: taxsense
+    component: worker
+spec:
+  type: ClusterIP
+  selector:
+    app: taxsense
+    component: worker
+  ports:
+    - name: rpc
+      port: 5000
+      targetPort: 5000
+      protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: taxsense-ingress
+  namespace: taxsense
+  labels:
+    app: taxsense
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT, X-CustomHeader, Keep-Alive, User-Agent, X-Requested-With, If-Modified-Since, Cache-Control, Content-Type"
+spec:
+  tls:
+    - hosts:
+        - app.taxsense.ai
+        - staging.taxsense.ai
+      secretName: taxsense-tls
+  rules:
+    - host: app.taxsense.ai
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: taxsense-app
+                port:
+                  name: http
+    - host: staging.taxsense.ai
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: taxsense-app-staging
+                port:
+                  name: http

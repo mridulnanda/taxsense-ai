@@ -1,0 +1,109 @@
+{
+  "name": "taxsense-mobile",
+  "version": "1.0.0",
+  "description": "TaxSense AI - Mobile app for tax planning in India's tier-2/3 markets",
+  "main": "node_modules/expo/AppEntry.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "eject": "expo eject",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "e2e": "detox test e2e --configuration ios.sim.debug",
+    "e2e:build": "detox build-framework-cache && detox build-app --configuration ios.sim.debug",
+    "lint": "eslint . --ext .ts,.tsx",
+    "type-check": "tsc --noEmit",
+    "prebuild": "expo prebuild --clean",
+    "build:ios": "eas build --platform ios",
+    "build:android": "eas build --platform android",
+    "submit:ios": "eas submit --platform ios",
+    "submit:android": "eas submit --platform android"
+  },
+  "dependencies": {
+    "react": "18.2.0",
+    "react-native": "0.73.0",
+    "expo": "~50.0.0",
+    "expo-splash-screen": "~0.26.0",
+    "expo-status-bar": "~1.11.0",
+    "expo-camera": "~14.1.0",
+    "expo-document-picker": "~11.2.0",
+    "expo-file-system": "~15.6.0",
+    "expo-sharing": "~12.0.0",
+    "expo-web-browser": "~12.0.0",
+    "expo-auth-session": "~5.4.0",
+    "expo-secure-store": "~12.3.0",
+    "expo-notifications": "~0.27.0",
+    "expo-device": "~5.4.0",
+    "react-navigation": "^6.1.7",
+    "react-navigation-bottom-tabs": "^6.5.5",
+    "react-navigation-native": "^6.1.7",
+    "react-navigation-stack": "^6.3.17",
+    "@react-navigation/native-stack": "^6.9.12",
+    "@react-native-async-storage/async-storage": "^1.21.0",
+    "@react-native-community/netinfo": "^11.0.0",
+    "zustand": "^4.4.1",
+    "@apollo/client": "^3.8.0",
+    "graphql": "^16.8.0",
+    "apollo-cache-persist": "^0.1.1",
+    "nativewind": "^2.0.11",
+    "tailwindcss": "^3.3.0",
+    "react-native-reanimated": "~3.6.0",
+    "react-native-gesture-handler": "~2.14.0",
+    "react-native-safe-area-context": "4.8.0",
+    "react-native-screens": "~3.27.0",
+    "react-native-svg": "^14.0.0",
+    "react-native-svg-transformer": "^1.1.0",
+    "react-native-fast-image": "^8.6.0",
+    "date-fns": "^2.30.0",
+    "numbro": "^2.5.0",
+    "decimal.js": "^10.4.3",
+    "uuid": "^9.0.0",
+    "axios": "^1.6.0",
+    "react-native-vector-icons": "^10.0.0",
+    "react-native-pdf": "^6.7.0",
+    "react-native-share": "^8.2.0",
+    "react-native-sqlite-storage": "^6.0.0",
+    "bignumber.js": "^9.1.1"
+  },
+  "devDependencies": {
+    "@types/react": "~18.2.0",
+    "@types/react-native": "^0.73.0",
+    "@types/jest": "^29.5.0",
+    "@types/uuid": "^9.0.0",
+    "typescript": "^5.0.0",
+    "@testing-library/react-native": "^12.4.0",
+    "@testing-library/jest-native": "^5.4.0",
+    "jest": "^29.5.0",
+    "jest-environment-node": "^29.5.0",
+    "@babel/preset-typescript": "^7.22.0",
+    "babel-jest": "^29.5.0",
+    "detox": "^20.0.0",
+    "detox-cli": "^20.0.0",
+    "eslint": "^8.45.0",
+    "eslint-config-expo": "^5.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eas-cli": "^5.0.0",
+    "metro-react-native-babel-preset": "^0.77.0"
+  },
+  "expo": {
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow TaxSense to access your camera for document scanning"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#ffffff"
+        }
+      ]
+    ]
+  }
+}

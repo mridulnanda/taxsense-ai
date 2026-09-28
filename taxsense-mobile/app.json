@@ -1,0 +1,70 @@
+{
+  "expo": {
+    "name": "TaxSense AI",
+    "slug": "taxsense-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTabletMode": true,
+      "bundleIdentifier": "com.mnbresearch.taxsense",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Allow TaxSense to access your camera for document scanning",
+        "NSPhotoLibraryUsageDescription": "Allow TaxSense to access your photo library for document upload",
+        "NSFaceIDUsageDescription": "Allow TaxSense to use Face ID for secure authentication",
+        "NSBiometricsUsageDescription": "Allow TaxSense to use biometric authentication"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.mnbresearch.taxsense",
+      "versionCode": 1,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow TaxSense to access your camera for document scanning"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#ffffff"
+        }
+      ],
+      "expo-secure-store"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "taxsense-mobile-project-id"
+      },
+      "apiUrl": "https://api.taxsense.ai",
+      "graphqlUrl": "https://api.taxsense.ai/graphql"
+    }
+  }
+}

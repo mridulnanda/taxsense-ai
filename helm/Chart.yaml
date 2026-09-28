@@ -1,0 +1,17 @@
+apiVersion: v2
+name: taxsense
+description: TaxSense AI - AI-native Indian income tax filing copilot
+type: application
+version: 1.0.0
+appVersion: "0.1.0"
+maintainers:
+  - name: MNB Research
+    email: team@taxsense.ai
+keywords:
+  - tax
+  - ai
+  - kubernetes
+  - helm
+home: https://taxsense.ai
+sources:
+  - https://github.com/taxsense/taxsense-ai

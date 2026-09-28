@@ -1,0 +1,206 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - production-canary
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  pre-deploy:
+    runs-on: ubuntu-latest
+    outputs:
+      should-deploy: ${{ steps.check.outputs.should-deploy }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check deployment conditions
+        id: check
+        run: |
+          if [[ "${{ github.ref }}" == "refs/tags/v"* ]]; then
+            echo "should-deploy=true" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "should-deploy=true" >> $GITHUB_OUTPUT
+          else
+            echo "should-deploy=true" >> $GITHUB_OUTPUT
+          fi
+
+  deploy:
+    needs: pre-deploy
+    if: needs.pre-deploy.outputs.should-deploy == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    environment:
+      name: production
+      url: https://app.taxsense.ai
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:production-${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Configure kubectl
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBE_CONFIG_PRODUCTION }}" | base64 -d > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+
+      - name: Create backup
+        run: |
+          kubectl run backup-${{ github.run_id }} \
+            --image=postgres:16-alpine \
+            --rm -it \
+            -n taxsense \
+            -- pg_dump -h postgres -U taxsense -d taxsense > backup-${{ github.sha }}.sql
+
+      - name: Upload backup
+        run: |
+          aws s3 cp backup-${{ github.sha }}.sql s3://${{ secrets.AWS_S3_BACKUP_BUCKET }}/backups/ \
+            --region ${{ secrets.AWS_REGION }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Run database migrations
+        run: |
+          kubectl run migrate-${{ github.run_id }} \
+            --image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:production-${{ github.sha }} \
+            --rm -it \
+            -n taxsense \
+            -- npm run migrate:up
+
+      - name: Blue-Green Deployment - Create new deployment
+        run: |
+          kubectl set image deployment/taxsense-app-blue \
+            taxsense-app=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:production-${{ github.sha }} \
+            -n taxsense
+
+          kubectl rollout status deployment/taxsense-app-blue \
+            -n taxsense \
+            --timeout=10m
+
+      - name: Run smoke tests
+        run: |
+          kubectl run smoke-tests-${{ github.run_id }} \
+            --image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:production-${{ github.sha }} \
+            --rm -it \
+            -n taxsense \
+            -- npm run test:smoke
+
+      - name: Health check
+        run: |
+          HEALTH_CHECKS=0
+          while [ $HEALTH_CHECKS -lt 3 ]; do
+            if curl -f https://app.taxsense.ai/api/health; then
+              HEALTH_CHECKS=$((HEALTH_CHECKS + 1))
+            else
+              echo "Health check failed, waiting..."
+              sleep 10
+            fi
+          done
+
+      - name: Switch traffic
+        run: |
+          kubectl patch service taxsense-app \
+            -p '{"spec":{"selector":{"deployment":"blue"}}}' \
+            -n taxsense
+
+      - name: Verify deployment
+        run: |
+          kubectl get deployments -n taxsense
+          kubectl get pods -n taxsense
+          kubectl get services -n taxsense
+
+      - name: Run integration tests
+        run: |
+          kubectl run integration-tests-${{ github.run_id }} \
+            --image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:production-${{ github.sha }} \
+            --rm -it \
+            -n taxsense \
+            -- npm run test:integration
+
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          body: |
+            Production deployment completed for ${{ github.ref }}
+            Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:production-${{ github.sha }}
+          draft: false
+          prerelease: false
+
+      - name: Notify Slack
+        if: always()
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "Production deployment ${{ job.status }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "Production deployment ${{ job.status }}\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow>\n<https://app.taxsense.ai|Visit App>"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Notify PagerDuty
+        if: failure()
+        uses: morrissimo/pagerduty-action@v1
+        with:
+          integration-key: ${{ secrets.PAGERDUTY_INTEGRATION_KEY }}
+          dedup-key: taxsense-prod-deploy
+          description: Production deployment failed
+          details: |
+            Repository: ${{ github.repository }}
+            Branch: ${{ github.ref }}
+            Commit: ${{ github.sha }}
+            Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
