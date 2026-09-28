@@ -1,0 +1,8 @@
+.git
+.gitignore
+node_modules
+.env.local
+.env.*.local
+*.md
+LICENSE
+.DS_Store
